@@ -27,7 +27,8 @@ load_dotenv()
 
 MODEL_PROVIDER = os.getenv('MODEL_PROVIDER')
 CHARACTER_NAME = os.getenv('CHARACTER_NAME')
-TTS_PROVIDER = os.getenv('TTS_PROVIDER')
+# TTS_PROVIDER = os.getenv('TTS_PROVIDER',"xtts")
+TTS_PROVIDER = "xtts"
 OPENAI_TTS_URL = os.getenv('OPENAI_TTS_URL')
 OPENAI_TTS_VOICE = os.getenv('OPENAI_TTS_VOICE', 'alloy')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
@@ -35,8 +36,8 @@ OPENAI_MODEL = os.getenv('OPENAI_MODEL')
 OPENAI_BASE_URL = os.getenv('OPENAI_BASE_URL')
 OLLAMA_MODEL = os.getenv('OLLAMA_MODEL')
 OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL')
-ELEVENLABS_API_KEY = os.getenv('ELEVENLABS_API_KEY')
-ELEVENLABS_TTS_VOICE = os.getenv('ELEVENLABS_TTS_VOICE')
+# ELEVENLABS_API_KEY = os.getenv('ELEVENLABS_API_KEY')
+# ELEVENLABS_TTS_VOICE = os.getenv('ELEVENLABS_TTS_VOICE')
 XTTS_SPEED = os.getenv('XTTS_SPEED', '1.1')
 
 # Initialize OpenAI API key
@@ -53,14 +54,14 @@ RESET_COLOR = '\033[0m'
 character_display_name = CHARACTER_NAME.capitalize()
 
 # Set up the faster-whisper model
-model_size = "medium.en"
+model_size = "tiny.en"
 whisper_model = WhisperModel(model_size, device="cuda", compute_type="float16")
 
 # Paths for character-specific files
 project_dir = os.path.dirname(os.path.abspath(__file__))
 characters_folder = os.path.join(project_dir, 'characters', CHARACTER_NAME)
 character_prompt_file = os.path.join(characters_folder, f"{CHARACTER_NAME}.txt")
-character_audio_file = os.path.join(characters_folder, f"{CHARACTER_NAME}.wav")
+character_audio_file = os.path.join(characters_folder, f"{CHARACTER_NAME}.mp3")
 
 # Load XTTS configuration
 xtts_config_path = os.path.join(project_dir, "XTTS-v2", "config.json")
