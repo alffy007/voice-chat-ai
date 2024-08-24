@@ -6,6 +6,16 @@ __pycache__/
 # C extensions
 *.so
 
+#large folders
+checkpoints
+XTTS-v2
+checkpoints_v2
+outputs
+.venv
+env
+checkpoints_v2/base_speakers/EN/checkpoint.pth
+checkpoints/base_speakers/EN/checkpoint.pth
+
 # Distribution / packaging
 .Python
 build/

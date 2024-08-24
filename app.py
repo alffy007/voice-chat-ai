@@ -11,36 +11,42 @@ from PIL import ImageGrab
 from dotenv import load_dotenv
 from openai import OpenAI, OpenAIError
 from faster_whisper import WhisperModel
+from TTS.tts.configs.xtts_config import XttsConfig
+from TTS.tts.models.xtts import Xtts
+import soundfile as sf
 from textblob import TextBlob
 from pathlib import Path
 import re
 import io
 import psutil
-import soundfile as sf
+from openvoice import se_extractor
+from openvoice.api import BaseSpeakerTTS, ToneColorConverter
+
 
 # Load environment variables
-load_dotenv()
+load_dotenv(override=True)
 
-MODEL_PROVIDER = os.getenv('MODEL_PROVIDER')
-CHARACTER_NAME = os.getenv('CHARACTER_NAME')
-TTS_PROVIDER = os.getenv('TTS_PROVIDER')
-OPENAI_TTS_URL = os.getenv('OPENAI_TTS_URL')
-OPENAI_TTS_VOICE = os.getenv('OPENAI_TTS_VOICE', 'alloy')
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-OPENAI_MODEL = os.getenv('OPENAI_MODEL')
-OPENAI_BASE_URL = os.getenv('OPENAI_BASE_URL')
-OLLAMA_MODEL = os.getenv('OLLAMA_MODEL')
-OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL')
+MODEL_PROVIDER = os.getenv("MODEL_PROVIDER")
+CHARACTER_NAME = os.getenv("CHARACTER_NAME")
+TTS_PROVIDER = os.getenv("TTS_PROVIDER")
+# TTS_PROVIDER = "xtts"
+OPENAI_TTS_URL = os.getenv("OPENAI_TTS_URL")
+OPENAI_TTS_VOICE = os.getenv("OPENAI_TTS_VOICE", "nova")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL")
 
 # Initialize OpenAI API key
 OpenAI.api_key = OPENAI_API_KEY
 
 # ANSI escape codes for colors
-PINK = '\033[95m'
-CYAN = '\033[96m'
-YELLOW = '\033[93m'
-NEON_GREEN = '\033[92m'
-RESET_COLOR = '\033[0m'
+PINK = "\033[95m"
+CYAN = "\033[96m"
+YELLOW = "\033[93m"
+NEON_GREEN = "\033[92m"
+RESET_COLOR = "\033[0m"
 
 # Capitalize the first letter of the character name
 character_display_name = CHARACTER_NAME.capitalize()
@@ -53,12 +59,45 @@ print("Whisper model initialized successfully.")
 
 # Paths for character-specific files
 project_dir = os.path.dirname(os.path.abspath(__file__))
+print(f"Project directory: {project_dir}")
 character_folder = os.path.join(project_dir, "characters", CHARACTER_NAME)
 character_prompt_file = os.path.join(character_folder, f"{CHARACTER_NAME}.txt")
-character_audio_file = os.path.join(character_folder, f"{CHARACTER_NAME}.wav")
+character_audio_file = os.path.join(character_folder, f"{CHARACTER_NAME}.mp3")
 
-output_dir = os.path.join(project_dir, 'outputs')
+
+print("Initializing openvoice model with GPU...")
+ckpt_base = 'checkpoints/base_speakers/EN'
+ckpt_converter = 'checkpoints/converter'
+device="cuda:0" if torch.cuda.is_available() else "cpu"
+output_dir = 'outputs'
+base_speaker_tts = BaseSpeakerTTS(f'{ckpt_base}/config.json', device=device)
+base_speaker_tts.load_ckpt(f'{ckpt_base}/checkpoint.pth')
+
+tone_color_converter = ToneColorConverter(f'{ckpt_converter}/config.json', device=device)
+tone_color_converter.load_ckpt(f'{ckpt_converter}/checkpoint.pth')
 os.makedirs(output_dir, exist_ok=True)
+
+source_se = torch.load(f'{ckpt_base}/en_default_se.pth').to(device)
+
+reference_speaker = 'characters/missminutes/missminutes.mp3' # This is the voice you want to clone
+target_se, audio_name = se_extractor.get_se(reference_speaker, tone_color_converter, target_dir='processed', vad=True)
+
+save_path = f'{output_dir}/output_en_default.wav'
+# # Load XTTS configuration
+# xtts_config_path = os.path.join(project_dir, "XTTS-v2", "config.json")
+# xtts_checkpoint_dir = os.path.join(project_dir, "XTTS-v2")
+
+# xtts_config = XttsConfig()
+# xtts_config.load_json(xtts_config_path)
+
+# # Initialize XTTS model
+# xtts_model = Xtts.init_from_config(xtts_config)
+# xtts_model.load_checkpoint(
+#     xtts_config, checkpoint_dir=xtts_checkpoint_dir, eval=True, use_deepspeed=False
+# )
+# xtts_model.cuda()  # Move the model to GPU if available
+
+
 
 # Function to check system memory
 def check_memory():
@@ -68,24 +107,29 @@ def check_memory():
     print(f"Used Memory: {memory_info.used / (1024 ** 2):.2f} MB")
     print(f"Memory Usage: {memory_info.percent}%")
 
+
 check_memory()
+
 
 # Function to open a file and return its contents as a string
 def open_file(filepath):
-    with open(filepath, 'r', encoding='utf-8') as infile:
+    with open(filepath, "r", encoding="utf-8") as infile:
         return infile.read()
+
 
 # Function to play audio using PyAudio
 def play_audio(file_path):
     # Open the audio file
-    wf = wave.open(file_path, 'rb')
+    wf = wave.open(file_path, "rb")
     # Create a PyAudio instance
     p = pyaudio.PyAudio()
     # Open a stream to play audio
-    stream = p.open(format=p.get_format_from_width(wf.getsampwidth()),
-                    channels=wf.getnchannels(),
-                    rate=wf.getframerate(),
-                    output=True)
+    stream = p.open(
+        format=p.get_format_from_width(wf.getsampwidth()),
+        channels=wf.getnchannels(),
+        rate=wf.getframerate(),
+        output=True,
+    )
     # Read and play audio data
     data = wf.readframes(1024)
     while data:
@@ -96,14 +140,18 @@ def play_audio(file_path):
     stream.close()
     p.terminate()
 
+
 # Model and device setup
-device = 'cpu'
+device = "gpu" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {device}")
 print(f"Model provider: {MODEL_PROVIDER}")
 print(f"Model: {OPENAI_MODEL if MODEL_PROVIDER == 'openai' else OLLAMA_MODEL}")
 print(f"Character: {character_display_name}")
 print(f"Text-to-Speech provider: {TTS_PROVIDER}")
-print("To stop chatting say Quit, Leave or Exit. Say, what's on my screen, to have AI view screen. One moment please loading...")
+print(
+    "To stop chatting say Quit, Leave or Exit. Say, what's on my screen, to have AI view screen. One moment please loading..."
+)
+
 
 def analyze_mood(user_input):
     analysis = TextBlob(user_input)
@@ -131,20 +179,26 @@ def analyze_mood(user_input):
         return "surprised"
     elif any(keyword in user_input.lower() for keyword in disgusted_keywords):
         return "disgusted"
-    elif any(keyword in user_input.lower() for keyword in joyful_keywords) or polarity > 0.3:
+    elif (
+        any(keyword in user_input.lower() for keyword in joyful_keywords)
+        or polarity > 0.3
+    ):
         return "joyful"
     elif any(keyword in user_input.lower() for keyword in neutral_keywords):
         return "neutral"
     else:
         return "neutral"
 
+
 def adjust_prompt(mood):
-    prompts_path = os.path.join(character_folder, 'prompts.json')
+    prompts_path = os.path.join(character_folder, "prompts.json")
     try:
-        with open(prompts_path, 'r', encoding='utf-8') as f:
+        with open(prompts_path, "r", encoding="utf-8") as f:
             mood_prompts = json.load(f)
     except FileNotFoundError:
-        print(f"Error loading prompts: {prompts_path} not found. Using default prompts.")
+        print(
+            f"Error loading prompts: {prompts_path} not found. Using default prompts."
+        )
         mood_prompts = {
             "happy": "RESPOND WITH JOY AND ENTHUSIASM.",
             "sad": "RESPOND WITH KINDNESS AND COMFORT.",
@@ -154,7 +208,7 @@ def adjust_prompt(mood):
             "fearful": "RESPOND WITH REASSURANCE.",
             "surprised": "RESPOND WITH AMAZEMENT.",
             "disgusted": "RESPOND WITH UNDERSTANDING.",
-            "joyful": "RESPOND WITH EXUBERANCE."
+            "joyful": "RESPOND WITH EXUBERANCE.",
         }
     except Exception as e:
         print(f"Error loading prompts: {e}")
@@ -164,21 +218,29 @@ def adjust_prompt(mood):
     mood_prompt = mood_prompts.get(mood, "")
     return mood_prompt
 
+
 def chatgpt_streamed(user_input, system_message, mood_prompt, conversation_history):
-    if MODEL_PROVIDER == 'ollama':
+    if MODEL_PROVIDER == "ollama":
         headers = {
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
         }
         payload = {
             "model": OLLAMA_MODEL,
-            "messages": [{"role": "system", "content": system_message + "\n" + mood_prompt}] + conversation_history + [{"role": "user", "content": user_input}],
+            "messages": [
+                {"role": "system", "content": system_message + "\n" + mood_prompt}
+            ]
+            + conversation_history
+            + [{"role": "user", "content": user_input}],
             "stream": True,
-            "options": {
-                "num_predict": -2,
-                "temperature": 1.0
-            }
+            "options": {"num_predict": -2, "temperature": 1.0},
         }
-        response = requests.post(f'{OLLAMA_BASE_URL}/v1/chat/completions', headers=headers, json=payload, stream=True, timeout=30)
+        response = requests.post(
+            f"{OLLAMA_BASE_URL}/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            stream=True,
+            timeout=30,
+        )
         response.raise_for_status()
 
         full_response = ""
@@ -189,14 +251,14 @@ def chatgpt_streamed(user_input, system_message, mood_prompt, conversation_histo
             if line:
                 try:
                     chunk = json.loads(line)
-                    delta_content = chunk['choices'][0]['delta'].get('content', '')
+                    delta_content = chunk["choices"][0]["delta"].get("content", "")
                     if delta_content:
                         line_buffer += delta_content
-                        if '\n' in line_buffer:
-                            lines = line_buffer.split('\n')
+                        if "\n" in line_buffer:
+                            lines = line_buffer.split("\n")
                             for line in lines[:-1]:
                                 print(NEON_GREEN + line + RESET_COLOR)
-                                full_response += line + '\n'
+                                full_response += line + "\n"
                             line_buffer = lines[-1]
                 except json.JSONDecodeError:
                     continue
@@ -205,18 +267,20 @@ def chatgpt_streamed(user_input, system_message, mood_prompt, conversation_histo
             full_response += line_buffer
         return full_response
 
-    elif MODEL_PROVIDER == 'openai':
-        messages = [{"role": "system", "content": system_message + "\n" + mood_prompt}] + conversation_history + [{"role": "user", "content": user_input}]
+    elif MODEL_PROVIDER == "openai":
+        messages = (
+            [{"role": "system", "content": system_message + "\n" + mood_prompt}]
+            + conversation_history
+            + [{"role": "user", "content": user_input}]
+        )
         headers = {
-            'Authorization': f'Bearer {OPENAI_API_KEY}',
-            'Content-Type': 'application/json'
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Content-Type": "application/json",
         }
-        payload = {
-            "model": OPENAI_MODEL,
-            "messages": messages,
-            "stream": True
-        }
-        response = requests.post(OPENAI_BASE_URL, headers=headers, json=payload, stream=True, timeout=30)
+        payload = {"model": OPENAI_MODEL, "messages": messages, "stream": True}
+        response = requests.post(
+            OPENAI_BASE_URL, headers=headers, json=payload, stream=True, timeout=30
+        )
         response.raise_for_status()
 
         full_response = ""
@@ -227,14 +291,17 @@ def chatgpt_streamed(user_input, system_message, mood_prompt, conversation_histo
             if line:
                 try:
                     chunk = json.loads(line)
-                    delta_content = chunk['choices'][0]['delta'].get('content', '')
+                    delta_content = chunk["choices"][0]["delta"].get("content", "")
                     if delta_content:
-                        print(NEON_GREEN + delta_content + RESET_COLOR, end='', flush=True)
+                        print(
+                            NEON_GREEN + delta_content + RESET_COLOR, end="", flush=True
+                        )
                         full_response += delta_content
                 except json.JSONDecodeError:
                     continue
         print("\nOpenAI stream complete.")
         return full_response
+
 
 def transcribe_with_whisper(audio_file):
     segments, info = whisper_model.transcribe(audio_file, beam_size=5)
@@ -243,13 +310,23 @@ def transcribe_with_whisper(audio_file):
         transcription += segment.text + " "
     return transcription.strip()
 
+
 def detect_silence(data, threshold=1000, chunk_size=1024):
     audio_data = np.frombuffer(data, dtype=np.int16)
     return np.mean(np.abs(audio_data)) < threshold
 
-def record_audio(file_path, silence_threshold=512, silence_duration=4.0, chunk_size=1024):
+
+def record_audio(
+    file_path, silence_threshold=512, silence_duration=2.0, chunk_size=1024
+):
     p = pyaudio.PyAudio()
-    stream = p.open(format=pyaudio.paInt16, channels=1, rate=16000, input=True, frames_per_buffer=chunk_size)
+    stream = p.open(
+        format=pyaudio.paInt16,
+        channels=1,
+        rate=16000,
+        input=True,
+        frames_per_buffer=chunk_size,
+    )
     frames = []
     print("Recording...")
     silent_chunks = 0
@@ -259,31 +336,38 @@ def record_audio(file_path, silence_threshold=512, silence_duration=4.0, chunk_s
         frames.append(data)
         if detect_silence(data, threshold=silence_threshold, chunk_size=chunk_size):
             silent_chunks += 1
+            # print("Silence detected:", silent_chunks)
             if silent_chunks > silence_duration * (16000 / chunk_size):
                 break
         else:
             silent_chunks = 0
             speaking_chunks += 1
+            # print("Silence detected:", speaking_chunks)
         if speaking_chunks > silence_duration * (16000 / chunk_size) * 10:
             break
     print("Recording stopped.")
     stream.stop_stream()
     stream.close()
     p.terminate()
-    wf = wave.open(file_path, 'wb')
+    wf = wave.open(file_path, "wb")
     wf.setnchannels(1)
     wf.setsampwidth(p.get_sample_size(pyaudio.paInt16))
     wf.setframerate(16000)
-    wf.writeframes(b''.join(frames))
+    wf.writeframes(b"".join(frames))
     wf.close()
 
+
 def execute_once(question_prompt):
-    temp_image_path = os.path.join(output_dir, 'temp_img.jpg')
-    temp_audio_path = os.path.join(output_dir, 'temp_audio.wav')
+    temp_image_path = os.path.join(output_dir, "temp_img.jpg")
+    temp_audio_path = os.path.join(output_dir, "temp_audio.wav")
 
     image_path = take_screenshot(temp_image_path)
     response = analyze_image(image_path, question_prompt)
-    text_response = response.get('choices', [{}])[0].get('message', {}).get('content', 'No response received.')
+    text_response = (
+        response.get("choices", [{}])[0]
+        .get("message", {})
+        .get("content", "No response received.")
+    )
 
     max_char_length = 350
     if len(text_response) > max_char_length:
@@ -296,112 +380,174 @@ def execute_once(question_prompt):
 
     os.remove(image_path)
 
+
 def execute_screenshot_and_analyze():
     question_prompt = "What do you see in this image? Keep it short but detailed and answer any follow up questions about it"
     print("Taking screenshot and analyzing...")
     execute_once(question_prompt)
     print("\nReady for the next question....")
 
+
 def take_screenshot(temp_image_path):
     time.sleep(5)  # Wait for 5 seconds before taking a screenshot
     screenshot = ImageGrab.grab()
     screenshot = screenshot.resize((512, 512))
-    screenshot.save(temp_image_path, 'JPEG')
+    screenshot.save(temp_image_path, "JPEG")
     return temp_image_path
+
 
 def encode_image(image_path):
     with open(image_path, "rb") as image_file:
-        return base64.b64encode(image_file.read()).decode('utf-8')
+        return base64.b64encode(image_file.read()).decode("utf-8")
+
 
 def analyze_image(image_path, question_prompt):
     encoded_image = encode_image(image_path)
 
-    if MODEL_PROVIDER == 'ollama':
-        headers = {'Content-Type': 'application/json'}
+    if MODEL_PROVIDER == "ollama":
+        headers = {"Content-Type": "application/json"}
         payload = {
             "model": "llava",
             "prompt": question_prompt,
             "images": [encoded_image],
-            "stream": False
+            "stream": False,
         }
         try:
-            response = requests.post(f'{OLLAMA_BASE_URL}/api/generate', headers=headers, json=payload, timeout=20)
+            response = requests.post(
+                f"{OLLAMA_BASE_URL}/api/generate",
+                headers=headers,
+                json=payload,
+                timeout=20,
+            )
             print(f"Response status code: {response.status_code}")
             if response.status_code == 200:
-                return {"choices": [{"message": {"content": response.json().get('response', 'No response received.')}}]}
+                return {
+                    "choices": [
+                        {
+                            "message": {
+                                "content": response.json().get(
+                                    "response", "No response received."
+                                )
+                            }
+                        }
+                    ]
+                }
             elif response.status_code == 404:
-                return {"choices": [{"message": {"content": "The llava model is not available on this server."}}]}
+                return {
+                    "choices": [
+                        {
+                            "message": {
+                                "content": "The llava model is not available on this server."
+                            }
+                        }
+                    ]
+                }
             else:
                 response.raise_for_status()
         except requests.exceptions.RequestException as e:
             print(f"Request failed: {e}")
-            return {"choices": [{"message": {"content": "Failed to process the image with the llava model."}}]}
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": "Failed to process the image with the llava model."
+                        }
+                    }
+                ]
+            }
     else:
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {OPENAI_API_KEY}"
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
         }
         message = {
             "role": "user",
             "content": [
                 {"type": "text", "text": question_prompt},
-                {"type": "image_url", "image_url": {"url": f"data:image/jpg;base64,{encoded_image}", "detail": "low"}}
-            ]
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpg;base64,{encoded_image}",
+                        "detail": "low",
+                    },
+                },
+            ],
         }
         payload = {
             "model": OPENAI_MODEL,
             "temperature": 0.5,
             "messages": [message],
-            "max_tokens": 1000
+            "max_tokens": 1000,
         }
         try:
-            response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=30)
+            response = requests.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=30,
+            )
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
             print(f"Request failed: {e}")
-            return {"choices": [{"message": {"content": "Failed to process the image with the OpenAI model."}}]}
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": "Failed to process the image with the OpenAI model."
+                        }
+                    }
+                ]
+            }
+
 
 def generate_speech(text, temp_audio_path):
-    if TTS_PROVIDER == 'openai':
+    if TTS_PROVIDER == "openai":
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {OPENAI_API_KEY}"
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
         }
         payload = {
             "model": "tts-1",
             "voice": OPENAI_TTS_VOICE,
             "input": text,
-            "response_format": "wav"
+            "response_format": "wav",
         }
-        response = requests.post(OPENAI_TTS_URL, headers=headers, json=payload, timeout=30)
+        response = requests.post(
+            OPENAI_TTS_URL, headers=headers, json=payload, timeout=30
+        )
         if response.status_code == 200:
             with open(temp_audio_path, "wb") as audio_file:
                 audio_file.write(response.content)
         else:
-            print(f"Failed to generate speech: {response.status_code} - {response.text}")
+            print(
+                f"Failed to generate speech: {response.status_code} - {response.text}"
+            )
     else:
         tts_model = xtts_model
+        gpt_cond_latent, speaker_embedding = tts_model.get_conditioning_latents(
+            audio_path=character_audio_file
+        )
         try:
-            outputs = tts_model.synthesize(
+            outputs = tts_model.inference(
                 text,
-                xtts_config,
-                speaker_wav=character_audio_file,
-                gpt_cond_len=24,
-                temperature=0.2,
-                language='en',
-                speed=float(os.getenv('XTTS_SPEED', '1.1'))
+                gpt_cond_latent,
+                speaker_embedding,
+                temperature=0.7,
+                language="en",
+                speed=float(os.getenv("XTTS_SPEED", "1.1")),
             )
-            synthesized_audio = outputs['wav']
+            synthesized_audio = outputs["wav"]
             sample_rate = xtts_config.audio.sample_rate
             sf.write(temp_audio_path, synthesized_audio, sample_rate)
-            print("Audio generated successfully with XTTS.")
+            print("Audio generated 1 successfully with XTTS.")
         except Exception as e:
             print(f"Error during XTTS audio generation: {e}")
 
+
 def process_and_play(prompt, audio_file_pth):
-    if TTS_PROVIDER == 'openai':
-        output_path = os.path.join(output_dir, 'output.wav')
+    if TTS_PROVIDER == "openai":
+        output_path = os.path.join(output_dir, "output.wav")
         generate_speech(prompt, output_path)
         print(f"Generated audio file at: {output_path}")
         if os.path.exists(output_path):
@@ -409,43 +555,62 @@ def process_and_play(prompt, audio_file_pth):
             play_audio(output_path)
         else:
             print("Error: Audio file not found.")
-    else:
+    elif TTS_PROVIDER == "xtts":
+        tts_model = xtts_model
+        gpt_cond_latent, speaker_embedding = tts_model.get_conditioning_latents(
+            audio_path=[character_audio_file]
+        )
         try:
-            outputs = xtts_model.synthesize(
-                prompt,
-                xtts_config,
-                speaker_wav=audio_file_pth,
-                gpt_cond_len=24,
-                temperature=0.2,
-                language='en',
-                speed=float(os.getenv('XTTS_SPEED', '1.1'))
+            outputs = tts_model.inference(
+                text=prompt,
+                gpt_cond_latent=gpt_cond_latent,
+                speaker_embedding=speaker_embedding,  # Add this missing argument
+                temperature=0.7,
+                language="en",
+                speed=float(os.getenv("XTTS_SPEED", "1.1")),
             )
-            synthesized_audio = outputs['wav']
+            synthesized_audio = outputs["wav"]
             sample_rate = xtts_config.audio.sample_rate
-            temp_audio_path = os.path.join(output_dir, 'output.wav')
+            temp_audio_path = os.path.join(output_dir, "output.wav")
             sf.write(temp_audio_path, synthesized_audio, sample_rate)
-            print("Audio generated successfully with XTTS.")
+            print("Audio generated 2 successfully with XTTS.")
             play_audio(temp_audio_path)
         except Exception as e:
             print(f"Error during XTTS audio generation: {e}")
+    else:
+        src_path = f'{output_dir}/tmp.wav'
+        base_speaker_tts.tts(prompt, src_path, speaker='default', language='English', speed=0.9)
+        # Run the tone color converter
+        encode_message = "@MyShell"
+        tone_color_converter.convert(
+                audio_src_path=src_path,
+                src_se=source_se,
+                tgt_se=target_se,
+                output_path=save_path,
+                message=encode_message
+                )
+        print("Audio generated successfully with openvoice.")
+        play_audio(save_path)        
+
 
 def sanitize_response(response):
-    response = re.sub(r'\*.*?\*', '', response)
-    response = re.sub(r'[^\w\s,.\'!?]', '', response)
+    response = re.sub(r"\*.*?\*", "", response)
+    response = re.sub(r"[^\w\s,.\'!?]", "", response)
     return response.strip()
+
 
 def user_chatbot_conversation():
     conversation_history = []
     base_system_message = open_file(character_prompt_file)
     quit_phrases = ["quit", "Quit", "Quit.", "Exit.", "exit", "Exit", "Leave."]
     screenshot_phrases = [
-        "what's on my screen", 
-        "take a screenshot", 
-        "show me my screen", 
-        "analyze my screen", 
-        "what do you see on my screen", 
-        "screen capture", 
-        "screenshot"
+        "what's on my screen",
+        "take a screenshot",
+        "show me my screen",
+        "analyze my screen",
+        "what do you see on my screen",
+        "screen capture",
+        "screenshot",
     ]
 
     try:
@@ -459,17 +624,21 @@ def user_chatbot_conversation():
                 print("Quitting the conversation...")
                 break
             conversation_history.append({"role": "user", "content": user_input})
-            
+
             if any(phrase in user_input.lower() for phrase in screenshot_phrases):
                 execute_screenshot_and_analyze()
                 continue
-            
+
             mood = analyze_mood(user_input)
             mood_prompt = adjust_prompt(mood)
-            
+
             print(PINK + f"{character_display_name}:..." + RESET_COLOR)
-            chatbot_response = chatgpt_streamed(user_input, base_system_message, mood_prompt, conversation_history)
-            conversation_history.append({"role": "assistant", "content": chatbot_response})
+            chatbot_response = chatgpt_streamed(
+                user_input, base_system_message, mood_prompt, conversation_history
+            )
+            conversation_history.append(
+                {"role": "assistant", "content": chatbot_response}
+            )
             sanitized_response = sanitize_response(chatbot_response)
             if len(sanitized_response) > 400:
                 sanitized_response = sanitized_response[:400] + "..."
@@ -479,6 +648,7 @@ def user_chatbot_conversation():
                 conversation_history = conversation_history[-20:]
     except KeyboardInterrupt:
         print("Quitting the conversation...")
+
 
 if __name__ == "__main__":
     user_chatbot_conversation()
