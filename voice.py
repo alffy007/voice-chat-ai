@@ -26,7 +26,7 @@ target_se, audio_name = se_extractor.get_se(reference_speaker, tone_color_conver
 save_path = f'{output_dir}/output_en_default.wav'
 
 # Run the base speaker tts
-text = "Dang it! I told ya a hundred times not to mess with those time streams! But did ya listen? No! Now look at this mess. The TVA’s got enough on its hands without havin’ to fix your mistakes too!"
+text = "Dang it! I told ya a hi hundred times not to mess with those time streams! But did ya listen? No! Now look at this mess. The TVA’s got enough on its hands without havin’ to fix your mistakes too!"
 src_path = f'{output_dir}/tmp.wav'
 base_speaker_tts.tts(text, src_path, speaker='default', language='English', speed=0.9)
 
@@ -39,3 +39,11 @@ tone_color_converter.convert(
     tgt_se=target_se,
     output_path=save_path,
     message=encode_message)
+
+
+
+# import torch
+# print(torch.__version__)
+# print(torch.cuda.is_available())
+# print(torch.cuda.current_device())
+# print(torch.cuda.device_count())

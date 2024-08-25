@@ -77,7 +77,7 @@ tone_color_converter = ToneColorConverter(f'{ckpt_converter}/config.json', devic
 tone_color_converter.load_ckpt(f'{ckpt_converter}/checkpoint.pth')
 os.makedirs(output_dir, exist_ok=True)
 
-source_se = torch.load(f'{ckpt_base}/en_default_se.pth').to(device)
+source_se = torch.load(f'{ckpt_base}/en_style_se.pth').to(device)
 
 reference_speaker = 'characters/missminutes/missminutes.mp3' # This is the voice you want to clone
 target_se, audio_name = se_extractor.get_se(reference_speaker, tone_color_converter, target_dir='processed', vad=True)
@@ -153,41 +153,64 @@ print(
 )
 
 
+# def analyze_mood(user_input):
+#     analysis = TextBlob(user_input)
+#     polarity = analysis.sentiment.polarity
+#     print(f"Sentiment polarity: {polarity}")  # Debugging statement
+
+#     flirty_keywords = ["flirt", "love", "crush", "charming", "amazing", "attractive"]
+#     angry_keywords = ["angry", "furious", "mad", "annoyed", "pissed off"]
+#     sad_keywords = ["sad", "depressed", "down", "unhappy", "crying"]
+#     fearful_keywords = ["scared", "afraid", "fear", "terrified", "nervous"]
+#     surprised_keywords = ["surprised", "amazed", "astonished", "shocked"]
+#     disgusted_keywords = ["disgusted", "revolted", "sick", "nauseated"]
+#     joyful_keywords = ["joyful", "happy", "elated", "glad", "delighted"]
+#     neutral_keywords = ["okay", "alright", "fine", "neutral"]
+
+#     if any(keyword in user_input.lower() for keyword in flirty_keywords):
+#         return "flirty" ,"friendly"
+#     elif any(keyword in user_input.lower() for keyword in angry_keywords):
+#         return "angry", "sad"
+#     elif any(keyword in user_input.lower() for keyword in sad_keywords):
+#         return "sad", "sad"
+#     elif any(keyword in user_input.lower() for keyword in fearful_keywords):
+#         return "fearful" ,"terrified"
+#     elif any(keyword in user_input.lower() for keyword in surprised_keywords):
+#         return "surprised", "cheerful"
+#     elif any(keyword in user_input.lower() for keyword in disgusted_keywords):
+#         return "disgusted","default"
+#     elif (
+#         any(keyword in user_input.lower() for keyword in joyful_keywords)
+#         or polarity > 0.3
+#     ):
+#         return "joyful", "cheerful"
+#     elif any(keyword in user_input.lower() for keyword in neutral_keywords):
+#         return "neutral", "default"
+#     else:
+#         return "neutral", "default"
+
 def analyze_mood(user_input):
-    analysis = TextBlob(user_input)
-    polarity = analysis.sentiment.polarity
+    # Analyze sentiment polarity using OpenAI
+    sentiment_response = OpenAI.Completion.create(
+        engine="text-davinci-003",
+        prompt=f"Analyze the sentiment polarity of the following text: {user_input}",
+        max_tokens=10
+    )
+    polarity = float(sentiment_response.choices[0].text.strip())
     print(f"Sentiment polarity: {polarity}")  # Debugging statement
 
-    flirty_keywords = ["flirt", "love", "crush", "charming", "amazing", "attractive"]
-    angry_keywords = ["angry", "furious", "mad", "annoyed", "pissed off"]
-    sad_keywords = ["sad", "depressed", "down", "unhappy", "crying"]
-    fearful_keywords = ["scared", "afraid", "fear", "terrified", "nervous"]
-    surprised_keywords = ["surprised", "amazed", "astonished", "shocked"]
-    disgusted_keywords = ["disgusted", "revolted", "sick", "nauseated"]
-    joyful_keywords = ["joyful", "happy", "elated", "glad", "delighted"]
-    neutral_keywords = ["okay", "alright", "fine", "neutral"]
+    # Classify emotion using OpenAI
+    emotion_response = OpenAI.Completion.create(
+        engine="text-davinci-003",
+        prompt=f"Classify the primary and secondary emotions of the following text: {user_input}",
+        max_tokens=20
+    )
+    emotions = emotion_response.choices[0].text.strip().split(',')
+    primary_emotion = emotions[0].strip()
+    secondary_emotion = emotions[1].strip() if len(emotions) > 1 else "default"
 
-    if any(keyword in user_input.lower() for keyword in flirty_keywords):
-        return "flirty"
-    elif any(keyword in user_input.lower() for keyword in angry_keywords):
-        return "angry"
-    elif any(keyword in user_input.lower() for keyword in sad_keywords):
-        return "sad"
-    elif any(keyword in user_input.lower() for keyword in fearful_keywords):
-        return "fearful"
-    elif any(keyword in user_input.lower() for keyword in surprised_keywords):
-        return "surprised"
-    elif any(keyword in user_input.lower() for keyword in disgusted_keywords):
-        return "disgusted"
-    elif (
-        any(keyword in user_input.lower() for keyword in joyful_keywords)
-        or polarity > 0.3
-    ):
-        return "joyful"
-    elif any(keyword in user_input.lower() for keyword in neutral_keywords):
-        return "neutral"
-    else:
-        return "neutral"
+    return primary_emotion, secondary_emotion
+
 
 
 def adjust_prompt(mood):
@@ -375,7 +398,7 @@ def execute_once(question_prompt):
 
     print(text_response)
 
-    generate_speech(text_response, temp_audio_path)
+    generate_speech(text_response, temp_audio_path, "default")
     play_audio(temp_audio_path)
 
     os.remove(image_path)
@@ -501,7 +524,7 @@ def analyze_image(image_path, question_prompt):
             }
 
 
-def generate_speech(text, temp_audio_path):
+def generate_speech(text, temp_audio_path,tt_mod):
     if TTS_PROVIDER == "openai":
         headers = {
             "Content-Type": "application/json",
@@ -523,32 +546,48 @@ def generate_speech(text, temp_audio_path):
             print(
                 f"Failed to generate speech: {response.status_code} - {response.text}"
             )
-    else:
+    elif TTS_PROVIDER == "xtts":
         tts_model = xtts_model
         gpt_cond_latent, speaker_embedding = tts_model.get_conditioning_latents(
-            audio_path=character_audio_file
+            audio_path=[character_audio_file]
         )
         try:
             outputs = tts_model.inference(
-                text,
-                gpt_cond_latent,
-                speaker_embedding,
+                text=prompt,
+                gpt_cond_latent=gpt_cond_latent,
+                speaker_embedding=speaker_embedding,  # Add this missing argument
                 temperature=0.7,
                 language="en",
                 speed=float(os.getenv("XTTS_SPEED", "1.1")),
             )
             synthesized_audio = outputs["wav"]
             sample_rate = xtts_config.audio.sample_rate
+            temp_audio_path = os.path.join(output_dir, "output.wav")
             sf.write(temp_audio_path, synthesized_audio, sample_rate)
-            print("Audio generated 1 successfully with XTTS.")
+            print("Audio generated 2 successfully with XTTS.")
+            play_audio(temp_audio_path)
         except Exception as e:
             print(f"Error during XTTS audio generation: {e}")
+    else:
+        src_path = f'{output_dir}/tmp.wav'
+        base_speaker_tts.tts(text, src_path, speaker=tt_mod, language='English', speed=1.1)
+        # Run the tone color converter
+        encode_message = "@MyShell"
+        tone_color_converter.convert(
+                audio_src_path=src_path,
+                src_se=source_se,
+                tgt_se=target_se,
+                output_path=save_path,
+                message=encode_message
+                )
+        print("Audio generated successfully with openvoice.")
+        play_audio(save_path)
 
 
-def process_and_play(prompt, audio_file_pth):
+def process_and_play(prompt, audio_file_pth,tts_mod):
     if TTS_PROVIDER == "openai":
         output_path = os.path.join(output_dir, "output.wav")
-        generate_speech(prompt, output_path)
+        generate_speech(prompt, output_path,tts_mod)
         print(f"Generated audio file at: {output_path}")
         if os.path.exists(output_path):
             print("Playing generated audio...")
@@ -579,7 +618,7 @@ def process_and_play(prompt, audio_file_pth):
             print(f"Error during XTTS audio generation: {e}")
     else:
         src_path = f'{output_dir}/tmp.wav'
-        base_speaker_tts.tts(prompt, src_path, speaker='default', language='English', speed=0.9)
+        base_speaker_tts.tts(prompt, src_path, speaker=tts_mod, language='English', speed=1.1)
         # Run the tone color converter
         encode_message = "@MyShell"
         tone_color_converter.convert(
@@ -629,7 +668,7 @@ def user_chatbot_conversation():
                 execute_screenshot_and_analyze()
                 continue
 
-            mood = analyze_mood(user_input)
+            mood,tts_mod = analyze_mood(user_input)
             mood_prompt = adjust_prompt(mood)
 
             print(PINK + f"{character_display_name}:..." + RESET_COLOR)
@@ -643,7 +682,7 @@ def user_chatbot_conversation():
             if len(sanitized_response) > 400:
                 sanitized_response = sanitized_response[:400] + "..."
             prompt2 = sanitized_response
-            process_and_play(prompt2, character_audio_file)
+            process_and_play(prompt2, character_audio_file, tts_mod)
             if len(conversation_history) > 20:
                 conversation_history = conversation_history[-20:]
     except KeyboardInterrupt:
