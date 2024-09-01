@@ -66,8 +66,8 @@ character_audio_file = os.path.join(character_folder, f"{CHARACTER_NAME}.mp3")
 
 
 print("Initializing openvoice model with GPU...")
-ckpt_base = 'checkpoints/base_speakers/EN'
-ckpt_converter = 'checkpoints/converter'
+ckpt_base = 'checkpoints_v2/base_speakers/EN'
+ckpt_converter = 'checkpoints_v2/converter'
 device="cuda:0" if torch.cuda.is_available() else "cpu"
 output_dir = 'outputs'
 base_speaker_tts = BaseSpeakerTTS(f'{ckpt_base}/config.json', device=device)
@@ -77,9 +77,9 @@ tone_color_converter = ToneColorConverter(f'{ckpt_converter}/config.json', devic
 tone_color_converter.load_ckpt(f'{ckpt_converter}/checkpoint.pth')
 os.makedirs(output_dir, exist_ok=True)
 
-source_se = torch.load(f'{ckpt_base}/en_style_se.pth').to(device)
+source_se = torch.load(f'{ckpt_base}/en_default_se.pth').to(device)
 
-reference_speaker = 'characters/missminutes/missminutes.mp3' # This is the voice you want to clone
+reference_speaker = 'spongebib.mp3' # This is the voice you want to clone
 target_se, audio_name = se_extractor.get_se(reference_speaker, tone_color_converter, target_dir='processed', vad=True)
 
 save_path = f'{output_dir}/output_en_default.wav'
@@ -153,63 +153,63 @@ print(
 )
 
 
-# def analyze_mood(user_input):
-#     analysis = TextBlob(user_input)
-#     polarity = analysis.sentiment.polarity
-#     print(f"Sentiment polarity: {polarity}")  # Debugging statement
-
-#     flirty_keywords = ["flirt", "love", "crush", "charming", "amazing", "attractive"]
-#     angry_keywords = ["angry", "furious", "mad", "annoyed", "pissed off"]
-#     sad_keywords = ["sad", "depressed", "down", "unhappy", "crying"]
-#     fearful_keywords = ["scared", "afraid", "fear", "terrified", "nervous"]
-#     surprised_keywords = ["surprised", "amazed", "astonished", "shocked"]
-#     disgusted_keywords = ["disgusted", "revolted", "sick", "nauseated"]
-#     joyful_keywords = ["joyful", "happy", "elated", "glad", "delighted"]
-#     neutral_keywords = ["okay", "alright", "fine", "neutral"]
-
-#     if any(keyword in user_input.lower() for keyword in flirty_keywords):
-#         return "flirty" ,"friendly"
-#     elif any(keyword in user_input.lower() for keyword in angry_keywords):
-#         return "angry", "sad"
-#     elif any(keyword in user_input.lower() for keyword in sad_keywords):
-#         return "sad", "sad"
-#     elif any(keyword in user_input.lower() for keyword in fearful_keywords):
-#         return "fearful" ,"terrified"
-#     elif any(keyword in user_input.lower() for keyword in surprised_keywords):
-#         return "surprised", "cheerful"
-#     elif any(keyword in user_input.lower() for keyword in disgusted_keywords):
-#         return "disgusted","default"
-#     elif (
-#         any(keyword in user_input.lower() for keyword in joyful_keywords)
-#         or polarity > 0.3
-#     ):
-#         return "joyful", "cheerful"
-#     elif any(keyword in user_input.lower() for keyword in neutral_keywords):
-#         return "neutral", "default"
-#     else:
-#         return "neutral", "default"
-
 def analyze_mood(user_input):
-    # Analyze sentiment polarity using OpenAI
-    sentiment_response = OpenAI.Completion.create(
-        engine="text-davinci-003",
-        prompt=f"Analyze the sentiment polarity of the following text: {user_input}",
-        max_tokens=10
-    )
-    polarity = float(sentiment_response.choices[0].text.strip())
+    analysis = TextBlob(user_input)
+    polarity = analysis.sentiment.polarity
     print(f"Sentiment polarity: {polarity}")  # Debugging statement
 
-    # Classify emotion using OpenAI
-    emotion_response = OpenAI.Completion.create(
-        engine="text-davinci-003",
-        prompt=f"Classify the primary and secondary emotions of the following text: {user_input}",
-        max_tokens=20
-    )
-    emotions = emotion_response.choices[0].text.strip().split(',')
-    primary_emotion = emotions[0].strip()
-    secondary_emotion = emotions[1].strip() if len(emotions) > 1 else "default"
+    flirty_keywords = ["flirt", "love", "crush", "charming", "amazing", "attractive"]
+    angry_keywords = ["angry", "furious", "mad", "annoyed", "pissed off"]
+    sad_keywords = ["sad", "depressed", "down", "unhappy", "crying"]
+    fearful_keywords = ["scared", "afraid", "fear", "terrified", "nervous"]
+    surprised_keywords = ["surprised", "amazed", "astonished", "shocked"]
+    disgusted_keywords = ["disgusted", "revolted", "sick", "nauseated"]
+    joyful_keywords = ["joyful", "happy", "elated", "glad", "delighted"]
+    neutral_keywords = ["okay", "alright", "fine", "neutral"]
 
-    return primary_emotion, secondary_emotion
+    if any(keyword in user_input.lower() for keyword in flirty_keywords):
+        return "flirty" ,"friendly"
+    elif any(keyword in user_input.lower() for keyword in angry_keywords):
+        return "angry", "sad"
+    elif any(keyword in user_input.lower() for keyword in sad_keywords):
+        return "sad", "sad"
+    elif any(keyword in user_input.lower() for keyword in fearful_keywords):
+        return "fearful" ,"terrified"
+    elif any(keyword in user_input.lower() for keyword in surprised_keywords):
+        return "surprised", "cheerful"
+    elif any(keyword in user_input.lower() for keyword in disgusted_keywords):
+        return "disgusted","default"
+    elif (
+        any(keyword in user_input.lower() for keyword in joyful_keywords)
+        or polarity > 0.3
+    ):
+        return "joyful", "cheerful"
+    elif any(keyword in user_input.lower() for keyword in neutral_keywords):
+        return "neutral", "default"
+    else:
+        return "neutral", "default"
+
+# def analyze_mood(user_input):
+#     # Analyze sentiment polarity using OpenAI
+#     sentiment_response = OpenAI.completions.create(
+#         engine="text-davinci-003",
+#         prompt=f"Analyze the sentiment polarity of the following text: {user_input}",
+#         max_tokens=10
+#     )
+#     polarity = float(sentiment_response.choices[0].text.strip())
+#     print(f"Sentiment polarity: {polarity}")  # Debugging statement
+
+#     # Classify emotion using OpenAI
+#     emotion_response = OpenAI.completions.create(
+#         engine="text-davinci-003",
+#         prompt=f"Classify the primary and secondary emotions of the following text: {user_input}",
+#         max_tokens=20
+#     )
+#     emotions = emotion_response.choices[0].text.strip().split(',')
+#     primary_emotion = emotions[0].strip()
+#     secondary_emotion = emotions[1].strip() if len(emotions) > 1 else "default"
+
+#     return primary_emotion, secondary_emotion
 
 
 
@@ -357,10 +357,12 @@ def record_audio(
     while True:
         data = stream.read(chunk_size)
         frames.append(data)
-        if detect_silence(data, threshold=silence_threshold, chunk_size=chunk_size):
-            silent_chunks += 1
+        if detect_silence(data, threshold=silence_threshold, chunk_size=chunk_size) and speaking_chunks==0:
+            continue
+        elif detect_silence(data, threshold=silence_threshold, chunk_size=chunk_size) and speaking_chunks!=0:    
+             silent_chunks += 1
             # print("Silence detected:", silent_chunks)
-            if silent_chunks > silence_duration * (16000 / chunk_size):
+             if silent_chunks > silence_duration * (16000 / chunk_size):
                 break
         else:
             silent_chunks = 0
@@ -369,6 +371,7 @@ def record_audio(
         if speaking_chunks > silence_duration * (16000 / chunk_size) * 10:
             break
     print("Recording stopped.")
+    print(speaking_chunks)
     stream.stop_stream()
     stream.close()
     p.terminate()

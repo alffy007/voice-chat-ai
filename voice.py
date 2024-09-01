@@ -3,8 +3,8 @@ import torch
 from openvoice import se_extractor
 from openvoice.api import BaseSpeakerTTS, ToneColorConverter
 
-ckpt_base = 'checkpoints/base_speakers/EN'
-ckpt_converter = 'checkpoints/converter'
+ckpt_base = 'checkpoints_v2/base_speakers/EN'
+ckpt_converter = 'checkpoints_v2/converter'
 device="cuda:0" if torch.cuda.is_available() else "cpu"
 output_dir = 'outputs'
 print(f"Using device: {device}")
@@ -16,17 +16,17 @@ tone_color_converter.load_ckpt(f'{ckpt_converter}/checkpoint.pth')
 
 os.makedirs(output_dir, exist_ok=True)
 
-source_se = torch.load(f'{ckpt_base}/en_default_se.pth').to(device)
+source_se = torch.load(f'{ckpt_base}/en_style_se.pth').to(device)
 
 
-reference_speaker = 'characters/missminutes/missminutes.mp3' # This is the voice you want to clone
+reference_speaker = 'characters\missminutes\missminutes.mp3' # This is the voice you want to clone
 target_se, audio_name = se_extractor.get_se(reference_speaker, tone_color_converter, target_dir='processed', vad=True)
 
 
 save_path = f'{output_dir}/output_en_default.wav'
 
 # Run the base speaker tts
-text = "Dang it! I told ya a hi hundred times not to mess with those time streams! But did ya listen? No! Now look at this mess. The TVA’s got enough on its hands without havin’ to fix your mistakes too!"
+text = "When he asked for feedback over the phone a couple of weeks later, I struggled with what to tell him. Be smarter? No, I knew he was brilliant. Be a better coder? No, his skills were on par with some of the best I'd seen. "
 src_path = f'{output_dir}/tmp.wav'
 base_speaker_tts.tts(text, src_path, speaker='default', language='English', speed=0.9)
 
