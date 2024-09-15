@@ -26,7 +26,7 @@ target_se, audio_name = se_extractor.get_se(reference_speaker, tone_color_conver
 save_path = f'{output_dir}/output_en_default.wav'
 
 # Run the base speaker tts
-text = "You are the most humblest person i have ever met!"
+text = "Thank you for using OpenVoice. This is a test message. Please wait for a moment."
 src_path = f'{output_dir}/tmp.wav'
 base_speaker_tts.tts(text, src_path, speaker='default', language='English', speed=0.9)
 
